@@ -1,14 +1,8 @@
 <%-
   cores = num_cores.to_i
 
-  if cores == 0 && cluster == "pitzer"
-    # little optimization for pitzer nodes. They want the whole node, if they chose 'any',
-    # it can be scheduled on p18 or p20 nodes. If not, they'll get the constraint below.
+  if cores == 0
     base_slurm_args = ["--nodes", "1", "--exclusive"]
-  elsif cores == 0
-    # full node on owens
-    cores = 28
-    base_slurm_args = ["--nodes", "1", "--ntasks-per-node", "28"]
   else
     base_slurm_args = ["--nodes", "1", "--ntasks-per-node", "#{cores}"]
   end
@@ -16,35 +10,11 @@
   slurm_args = case node_type
               when "gpu"
                 base_slurm_args + ["--gpus-per-node", "1"]
-              when "gpu-40core"
-                base_slurm_args + ["--gpus-per-node", "1", "--constraint", "40core"]
-              when "gpu-48core"
-                base_slurm_args + ["--gpus-per-node", "1", "--constraint", "48core"]
-              when "any-40core"
-                base_slurm_args + ["--constraint", "40core"]
-              when "any-48core"
-                base_slurm_args + ["--constraint", "48core"]
-              when "hugemem"
-                base_slurm_args + ["--partition", "hugemem", "--exclusive"]
-              when "largemem"
-                base_slurm_args + ["--partition", "largemem", "--exclusive"]
               when "debug"
                 base_slurm_args += ["--partition", "debug", "--exclusive"]
               else
                 base_slurm_args
               end
-
-  torque_args = case node_type
-              when "gpu"
-                ":ppn=#{cores}:gpus=1"
-              when "hugemem"
-                # disregard what num_cores was submitted (0 or 48 are the only valid options)
-                ":ppn=48"
-              else
-                ":ppn=#{cores}"
-              end
-
-  torque_cluster = OodAppkit.clusters[cluster].job_config[:adapter] == 'torque'
 
 -%>
 ---
@@ -53,16 +23,7 @@ batch_connect:
   conn_params:
     - jupyter_api
 script:
-  # need to unify --partition args above and queue_name below when owens is fully Slurm
-  <%- if node_type == "debug" && torque_cluster -%>
-  queue_name: "debug"
-  <%- end -%>
   native:
-    <%- if torque_cluster %>
-    resources:
-      nodes: "1<%= torque_args %>"
-    <%- else %>
     <%- slurm_args.each do |arg| %>
     - "<%= arg %>"
-    <%- end %>
     <%- end %>
